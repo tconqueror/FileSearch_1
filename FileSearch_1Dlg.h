@@ -41,12 +41,20 @@ private:
 	CListCtrl result;
 public:
 	afx_msg void OnBnClickedsearchbtn();
+	afx_msg void OnBnClickedOk();
 private:
 	CEdit dir;
 	CEdit file;
+	CString Cdir;
+	CString Cfile;
 	CString intToCString(DWORD64 n);
 	CString fileTimeToCString(FILETIME &a);
-	void Find(CString dir, std::stack<ff> &st, CString file);
+	void Find(CString dir, CString file);
 	void Push(ff a);
 	void syncWithStack(std::stack<ff> a);
+	static UINT __cdecl StaticThreadFunc(LPVOID);
+	UINT ThreadFunc();
+	int count = 0;
+	CWinThread* cw;
+	bool status = false;
 };

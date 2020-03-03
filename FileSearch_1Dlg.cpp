@@ -74,6 +74,7 @@ BEGIN_MESSAGE_MAP(CFileSearch1Dlg, CDialogEx)
 	ON_WM_QUERYDRAGICON()
 	ON_NOTIFY(LVN_ITEMCHANGED, IDC_LIST1, &CFileSearch1Dlg::OnLvnItemchangedList1)
 	ON_BN_CLICKED(IDC_searchBtn, &CFileSearch1Dlg::OnBnClickedsearchbtn)
+	ON_BN_CLICKED(IDOK, &CFileSearch1Dlg::OnBnClickedOk)
 END_MESSAGE_MAP()
 
 
@@ -107,7 +108,7 @@ BOOL CFileSearch1Dlg::OnInitDialog()
 	//  when the application's main window is not a dialog
 	SetIcon(m_hIcon, TRUE);			// Set big icon
 	SetIcon(m_hIcon, FALSE);		// Set small icon
-
+	result.SetExtendedStyle(result.GetExtendedStyle() | LVS_EX_FULLROWSELECT);
 	// TODO: Add extra initialization here
 	result.InsertColumn(0, L"TimeCreate", LVCFMT_LEFT, 80);
 	result.InsertColumn(0, L"LastTimeChange", LVCFMT_LEFT, 100);
@@ -179,24 +180,34 @@ void CFileSearch1Dlg::OnLvnItemchangedList1(NMHDR* pNMHDR, LRESULT* pResult)
 
 void CFileSearch1Dlg::OnBnClickedsearchbtn()
 {
+	if (status)
+	{
+		TerminateThread(cw->m_hThread, 0);
+		SetDlgItemText(IDC_searchBtn, L"Start");
+		status = false;
+		return ;
+	}
 	if (dir.GetWindowTextLengthW() == 0)
 	{	
 		AfxMessageBox(L"Enter somthing please");
 		return;
 	}
-	CString Cdir;
 	dir.GetWindowText(Cdir);
 	if (!PathFileExists(Cdir))
 	{
 		AfxMessageBox(L"The directory does not exist!");
 		return;
 	}
-	CString Cfile;
 	file.GetWindowText(Cfile);
-	std::stack<ff> st;
 	Cfile.MakeLower();
-	CFileSearch1Dlg::Find(Cdir, st, Cfile);
-	syncWithStack(st);
+	count = 0;
+	result.DeleteAllItems();
+	cw = AfxBeginThread(StaticThreadFunc, this, THREAD_PRIORITY_NORMAL, 0, 0, NULL);
+}
+
+void CFileSearch1Dlg::OnBnClickedOk()
+{
+	OnBnClickedsearchbtn();
 }
 
 CString CFileSearch1Dlg::intToCString(DWORD64 n)
@@ -220,16 +231,13 @@ CString CFileSearch1Dlg::fileTimeToCString(FILETIME &a)
 	return res;
 }
 
-void CFileSearch1Dlg::Find(CString dir, std::stack<ff> &st, CString file)
+void CFileSearch1Dlg::Find(CString dir, CString file)
 {
 	WIN32_FIND_DATA ffd;
 	HANDLE hFind = INVALID_HANDLE_VALUE;
 	hFind = FindFirstFile(dir + L"\\*", &ffd);
 	if (hFind == INVALID_HANDLE_VALUE)
 	{
-		//AfxMessageBox(L"Wrong path!");
-		//AfxMessageBox(intToCString(st.size()));
-		//AfxMessageBox(dir + L"\\*");
 		return;
 	}
 	do
@@ -241,7 +249,7 @@ void CFileSearch1Dlg::Find(CString dir, std::stack<ff> &st, CString file)
 			if (tmp.Find(file) == -1)
 				continue;
 			ff temp;
-			temp.a = st.size() + 1;
+			temp.a = ++count;
 			temp.b = ffd.cFileName;
 			DWORD64 x,y;
 			x = ffd.nFileSizeLow;
@@ -252,7 +260,7 @@ void CFileSearch1Dlg::Find(CString dir, std::stack<ff> &st, CString file)
 			temp.d = dir + L"\\" + ffd.cFileName;
 			temp.e = fileTimeToCString(ffd.ftLastWriteTime);
 			temp.f = fileTimeToCString(ffd.ftCreationTime);
-			st.push(temp);
+			Push(temp);
 		}
 		else
 		{
@@ -262,8 +270,8 @@ void CFileSearch1Dlg::Find(CString dir, std::stack<ff> &st, CString file)
 				continue;
 			CString s = dir + L"\\";
 			//s.Delete(s.GetLength() - 1);
-			s = s + ffd.cFileName;
-			CFileSearch1Dlg::Find(s, st, file);
+			s = s + ffd.cFileName; 
+			CFileSearch1Dlg::Find(s, file);
 		}
 	} while ((FindNextFile(hFind, &ffd)) != 0);
 	FindClose(hFind);
@@ -271,7 +279,7 @@ void CFileSearch1Dlg::Find(CString dir, std::stack<ff> &st, CString file)
 
 void CFileSearch1Dlg::Push(ff a)
 {
-	int n = result.InsertItem(0, intToCString(a.a));
+	int n = result.InsertItem(count, intToCString(a.a));
 	result.SetItemText(n, 1, a.b);
 	result.SetItemText(n, 2, a.c);
 	result.SetItemText(n, 3, a.d);
@@ -279,13 +287,20 @@ void CFileSearch1Dlg::Push(ff a)
 	result.SetItemText(n, 5, a.f);
 }
 
-void CFileSearch1Dlg::syncWithStack(std::stack<ff> a)
+
+UINT __cdecl CFileSearch1Dlg::StaticThreadFunc(LPVOID pParam)
 {
-	result.DeleteAllItems();
-	while (a.size())
-	{
-		ff temp = a.top();
-		a.pop();
-		Push(temp);
-	}
+	CFileSearch1Dlg* dlg = reinterpret_cast<CFileSearch1Dlg*> (pParam);
+	UINT retcode = dlg->ThreadFunc();
+	return retcode;
+}
+
+UINT CFileSearch1Dlg::ThreadFunc()
+{
+	status = true;
+	SetDlgItemText(IDC_searchBtn, L"Stop");
+	Find(Cdir,Cfile);
+	SetDlgItemText(IDC_searchBtn, L"Start");
+	status = false;
+	return 0;
 }
